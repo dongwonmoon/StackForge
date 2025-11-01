@@ -1,0 +1,66 @@
+# templates/docker-compose.yaml.j2
+version: '3.8'
+
+services:
+  
+  {% if services.postgres %}
+  postgres:
+    # 1. 이미지 오버라이드 (없으면 'postgres:15' 사용)
+    image: {{ services.postgres.image | default('postgres:15') }}
+    container_name: stack_forge_postgres # 👈 이름 변경
+    
+    # 2. 포트 오버라이드 (없으면 service_config.postgres.port 사용)
+    ports:
+      {% for port_mapping in services.postgres.ports | default([service_config.postgres.port ~ ':5432']) %}
+      - "{{ port_mapping }}"
+      {% endfor %}
+      
+    environment:
+      POSTGRES_USER: "{{ service_config.postgres.user }}"
+      POSTGRES_PASSWORD: "{{ service_config.postgres.password }}"
+      POSTGRES_DB: "{{ service_config.postgres.db_name | default('stack_forge_db') }}" # 👈 이름 변경
+      
+    # 3. 볼륨 오버라이드 (없으면 'stack_forge_postgres_data' 사용)
+    volumes:
+      {% for volume_mapping in services.postgres.volumes | default(['stack_forge_postgres_data:/var/lib/postgresql/data']) %} # 👈 이름 변경
+      - "{{ volume_mapping }}"
+      {% endfor %}
+  {% endif %}
+
+
+  {% if services.dbt %}
+  dbt:
+    image: {{ services.dbt.image | default('ghcr.io/dbt-labs/dbt-postgres:1.7-latest') }}
+    container_name: stack_forge_dbt # 👈 이름 변경
+    
+    volumes:
+      {% for volume_mapping in services.dbt.volumes | default([dbt_config.project_dir ~ ':/usr/app']) %}
+      - "{{ volume_mapping }}"
+      {% endfor %}
+      
+    # dbt 컨테이너가 postgres보다 먼저 뜨면 접속 실패하므로, postgres가 준비될 때까지 기다리도록 함
+    # (docker-compose v2.1+ 필요)
+    depends_on:
+      postgres:
+        condition: service_healthy # 👈 (주의) Postgres에 healthcheck 추가 필요
+        
+    command: ["tail", "-f", "/dev/null"]
+  {% endif %}
+
+  
+  {% if services.airbyte %}
+  # (Airbyte는 여러 컨테이너가 필요하므로, 우선 간단한 플레이스홀더만 둡니다)
+  # (향후 docker-compose.yaml.j2에 airbyte-webapp, server, db 등을 추가해야 함)
+  airbyte-placeholder:
+    image: hello-world
+    container_name: stack_forge_airbyte_placeholder
+  {% endif %}
+
+
+# -------------------------------------------------------------------
+# 볼륨 정의
+# -------------------------------------------------------------------
+volumes:
+  {% if services.postgres and not services.postgres.volumes %}
+  stack_forge_postgres_data: # 👈 이름 변경
+  {% endif %}
